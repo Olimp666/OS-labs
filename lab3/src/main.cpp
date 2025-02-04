@@ -4,9 +4,9 @@
 #include <string>
 #include <thread>
 #include <ctime>
-#include <windows.h>
 
 #include "my_shmem.hpp"
+#include "util.hpp"
 
 #define ll long long
 #define _CRT_SECURE_NO_WARNINGS
@@ -28,21 +28,13 @@ enum PROCESS_TYPE
 	COPYB
 };
 
-int pid = GetCurrentProcessId();
-int parent_pid = GetCurrentProcessId();
+int pid = getCurrentPID();
+int parent_pid = getCurrentPID();
 PROCESS_TYPE ptype;
 
 cplib::SharedMem<Data> getShmem()
 {
-	return cplib::SharedMem<Data>("ssss");
-}
-
-string getCurrentTime()
-{
-	auto now = chrono::system_clock::to_time_t(chrono::system_clock::now());
-	string time = ctime(&now);
-	time.pop_back();
-	return time;
+	return cplib::SharedMem<Data>("shared");
 }
 
 void write(string str)
@@ -50,47 +42,6 @@ void write(string str)
 	ofstream fout("file.log", ios::app);
 	fout << getCurrentTime() << " PID: " << pid << " " << str << endl;
 	fout.close();
-}
-
-std::string getExecutablePath()
-{
-	char buffer[MAX_PATH];
-	GetModuleFileNameA(NULL, (char *)buffer, MAX_PATH);
-	return std::string(buffer);
-}
-
-int startCopy(string args)
-{
-	STARTUPINFOA si;
-	PROCESS_INFORMATION pi;
-	string str = getExecutablePath() + args;
-
-	ZeroMemory(&si, sizeof(si));
-	si.cb = sizeof(si);
-	ZeroMemory(&pi, sizeof(pi));
-	if (!CreateProcessA(NULL, (char *)str.c_str(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
-	{
-		return GetLastError();
-	}
-	return pi.dwProcessId;
-}
-
-bool isProcessExists(int pid)
-{
-	HANDLE processHandle = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
-	if (processHandle == NULL)
-	{
-		return false;
-	}
-
-	DWORD exitCode;
-	if (GetExitCodeProcess(processHandle, &exitCode))
-	{
-		CloseHandle(processHandle);
-		return exitCode == STILL_ACTIVE;
-	}
-	CloseHandle(processHandle);
-	return false;
 }
 
 void copy_thread()
@@ -142,7 +93,6 @@ void log_thread()
 	int log_pid = shmem.Data()->parent_pid;
 	shmem.Unlock();
 
-	cout<<"Log pid is "<<log_pid<<endl;
 	auto sleep_duration = chrono::seconds(1);
 	while (is_running)
 	{
@@ -197,13 +147,11 @@ int main(int argc, char *argv[])
 		{
 			ptype = COPYA;
 			parent_pid = stoi(argv[2]);
-			cout<<"COPY A parent_pid is "<<parent_pid<<endl;
 		}
 		if (!strcmp(argv[1], "COPYB"))
 		{
 			ptype = COPYB;
 			parent_pid = stoi(argv[2]);
-			cout<<"COPY B parent_pid is "<<parent_pid<<endl;
 		}
 	}
 	string ptype_str = (ptype == MAIN) ? "MAIN" : ptype == COPYA ? "COPYA"
@@ -230,14 +178,14 @@ int main(int argc, char *argv[])
 	}
 	if (ptype != MAIN)
 	{
+		shmem.~SharedMem();
 		write("Exited! " + ptype_str);
-		return 0;
+		exit(0);
 	}
 
 	shmem.Lock();
 	if (shmem.Data()->parent_pid == -1 && ptype == MAIN)
 	{
-		cout<<"Logging parent_pid is "<<parent_pid<<endl;
 		shmem.Data()->parent_pid = pid;
 	}
 	shmem.Unlock();
@@ -261,6 +209,7 @@ int main(int argc, char *argv[])
 				shmem.Data()->parent_pid = -1;
 			}
 			shmem.Unlock();
+			shmem.~SharedMem();
 			log.join();
 			ctr.join();
 			write("Exited! " + ptype_str);
