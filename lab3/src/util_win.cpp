@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <chrono>
 #include <string>
 
 int getCurrentPID(){
@@ -7,8 +8,8 @@ int getCurrentPID(){
 
 std::string getCurrentTime()
 {
-	auto now = chrono::system_clock::to_time_t(chrono::system_clock::now());
-	string time = ctime(&now);
+	auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+	std::string time = ctime(&now);
 	time.pop_back();
 	return time;
 }
@@ -24,7 +25,7 @@ int startCopy(std::string args)
 {
 	STARTUPINFOA si;
 	PROCESS_INFORMATION pi;
-	string str = getExecutablePath() + args;
+	std::string str = getExecutablePath() + args;
 
 	ZeroMemory(&si, sizeof(si));
 	si.cb = sizeof(si);
