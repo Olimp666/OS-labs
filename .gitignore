@@ -1,4 +1,5 @@
 *.exe
 /.vscode
 */build
+*/logs
 *.log

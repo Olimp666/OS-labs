@@ -43,12 +43,14 @@ int startCopy(std::string args)
     sa.sa_handler = SIG_IGN;
     sa.sa_flags = SA_NOCLDWAIT; 
     sigaction(SIGCHLD, &sa, NULL);
+
     args.erase(0, args.find_first_not_of(' '));
     args.erase(args.find_last_not_of(' ') + 1);
-
+    
     std::istringstream iss(args);
     std::vector<std::string> tokens{std::istream_iterator<std::string>{iss}, std::istream_iterator<std::string>{}};
     char *arg1 = (char *)tokens[0].c_str();
+
     char *arg2 = (char *)tokens[1].c_str();
     pid_t child_pid;
     char *argv[]{(char *)getExecutablePath().c_str(), arg1, arg2, NULL};
