@@ -30,13 +30,13 @@ int main(int argc, char *argv[])
 
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::normal_distribution norm(0.0, 8.0);
+    std::uniform_real_distribution<double> unif(16, 20);
 
     std::string out;
     for (;;)
     {
         auto now_c = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        out = "$$$$$" + std::to_string(now_c) + '_' + std::to_string(norm(gen)) + "$$$$$";
+        out = "$$$$$" + std::to_string(now_c) + '_' + std::to_string(abs(unif(gen))) + "$$$$$";
         serial_port << out;
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }

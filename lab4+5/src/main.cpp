@@ -4,9 +4,12 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <map>
+#include <set>
 #include <filesystem>
 #include <ctime>
 
+#include "server.hpp"
 #include "my_serial.hpp"
 
 #define ll long long
@@ -21,11 +24,16 @@ string LOG_SEC_NAME = LOG_DIR + "/second.log";
 string LOG_HOUR_NAME = LOG_DIR + "/hour.log";
 string LOG_DAY_NAME = LOG_DIR + "/day.log";
 
-ll HOUR_SEC = 10;
-// ll HOUR_SEC = 60 * 60;
+// ll HOUR_SEC = 10;
+ll HOUR_SEC = 60 * 60;
 ll DAY_SEC = HOUR_SEC * 24;
 ll MONTH_SEC = DAY_SEC * 30;
 ll YEAR_SEC = DAY_SEC * 365;
+
+double current_temp = 0;
+
+map<string, bool> is_busy;
+map<string, string> mean_types{{"hour", LOG_HOUR_NAME}, {"day", LOG_DAY_NAME}};
 
 struct record
 {
@@ -88,6 +96,7 @@ getMeanTemp(string file_name, ll now, ll diff_sec)
 
 void tryCreateFile(string name)
 {
+    is_busy[name] = false;
     if (!fs::exists(name))
     {
         ofstream(name).close();
@@ -110,6 +119,10 @@ void setTracking(string name, ll &tracking)
 
 void writeTempToFile(string file_name, ll &time, double &temp, ll &now, ll lim_sec)
 {
+    while (is_busy[file_name])
+    {
+    }
+    is_busy[file_name] = true;
     string temp_name = LOG_DIR + "/temp.log";
     if (fs::exists(temp_name))
     {
@@ -149,6 +162,7 @@ void writeTempToFile(string file_name, ll &time, double &temp, ll &now, ll lim_s
     of_log.close();
     temp_log.close();
     fs::remove(temp_name);
+    is_busy[file_name] = false;
 }
 
 vector<record> parseTemp(string str)
@@ -182,9 +196,63 @@ vector<record> parseTemp(string str)
     return result;
 }
 
+vector<record> readFromFile(string file_name)
+{
+    while (is_busy[file_name])
+    {
+    }
+    is_busy[file_name] = true;
+    vector<record> recs;
+    ifstream if_log(file_name);
+    while (!if_log.eof())
+    {
+        record rec;
+        if_log >> rec.time >> rec.temp;
+        recs.push_back(rec);
+    }
+    is_busy[file_name] = false;
+    return recs;
+}
+
+void startServer()
+{
+    const char *base_dir = "./public";
+    httplib::Server svr;
+    svr.set_mount_point("/", base_dir);
+    svr.Get("/hi", [](const httplib::Request &, httplib::Response &res)
+            { res.set_content("Hello World!", "text/plain"); });
+    svr.Get("/current", [](const httplib::Request &, httplib::Response &res)
+            { res.set_content(to_string(current_temp), "text/plain"); });
+    svr.Get("/mean/:type", [](const httplib::Request &req, httplib::Response &res)
+            { 
+                string mean_type = req.path_params.at("type");
+                if(!mean_types.count(mean_type)){
+                    res.status=404;
+                    res.set_content("404: Not Found", "text/plain");
+                    return;
+                }
+                string json="";
+                vector<record> recs=readFromFile(mean_types[mean_type]);
+                json+='[';
+                for (const auto& rec:recs)
+                {
+                    json+="{\"time\":";
+                    json+=to_string(rec.time);
+                    json+=",\"temperature\":";
+                    json+=to_string(rec.temp);
+                    json+="},";
+                }
+                json.pop_back();
+                json+=']';
+                
+                res.set_content(json, "application/json"); });
+
+    svr.listen("127.0.0.1", 18727);
+}
+
 int main(int argc, char *argv[])
 {
-
+    thread server(startServer);
     string port(DEFAULT_PORT);
     if (argc > 1)
     {
@@ -218,22 +286,26 @@ int main(int argc, char *argv[])
     {
         serial_port >> str;
         auto parsed_temp = parseTemp(str);
+        if (parsed_temp.size() > 0)
+        {
+            current_temp = parsed_temp[parsed_temp.size() - 1].temp;
+        }
         for (int i = 0; i < parsed_temp.size(); i++)
         {
             now = getUnixTime();
             writeTempToFile(LOG_SEC_NAME, parsed_temp[i].time, parsed_temp[i].temp, now, DAY_SEC);
         }
-    
+
         if (now - upd.hour_time >= HOUR_SEC)
         {
             double hour_mean = getMeanTemp(LOG_SEC_NAME, now, HOUR_SEC);
-            writeTempToFile(LOG_HOUR_NAME,upd.hour_time, hour_mean, now, MONTH_SEC);
+            writeTempToFile(LOG_HOUR_NAME, upd.hour_time, hour_mean, now, MONTH_SEC);
             upd.hour_time = now;
         }
         if (now - upd.day_time >= DAY_SEC)
         {
             double day_mean = getMeanTemp(LOG_HOUR_NAME, now, DAY_SEC);
-            writeTempToFile(LOG_DAY_NAME,upd.day_time, day_mean, now, YEAR_SEC);
+            writeTempToFile(LOG_DAY_NAME, upd.day_time, day_mean, now, YEAR_SEC);
             upd.day_time = now;
         }
     }
