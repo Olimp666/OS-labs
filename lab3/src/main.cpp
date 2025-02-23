@@ -212,7 +212,7 @@ int main(int argc, char *argv[])
 			shmem.~SharedMem();
 			log.join();
 			ctr.join();
-			write("Exited! " + ptype_str);
+			write("Exited!!!! " + ptype_str);
 			return 0;
 		}
 		if (param == 's')
